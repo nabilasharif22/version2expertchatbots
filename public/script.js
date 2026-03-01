@@ -1,10 +1,8 @@
 // script.js
-// Orchestrates the conversation on the front end:
-// - Validates experts
-// - Runs turn-based conversation with user-configurable delay
-// - Shows pulsing dot indicators per model
-// - Supports jump-in/resume behavior and appends user comments to prompts
-// - Enforces evidence-only prompts via instructions sent to each model
+// Orchestrates the conversation on the front end
+// Integrated with Vercel serverless APIs
+
+const API_BASE = "https://version2expertchatbots.vercel.app/api"; // <-- REPLACE with your Vercel URL
 
 const expertAInput = document.getElementById("expertA");
 const expertBInput = document.getElementById("expertB");
@@ -92,18 +90,15 @@ jumpBtn.onclick = () => {
   if (!conversationRunning) return;
 
   if (!jumpMode) {
-    // Enter jump mode: pause countdown, show input, change button text
     jumpMode = true;
     jumpBtn.textContent = "Resume conversation";
     jumpInput.style.display = "block";
   } else {
-    // Resume: capture user text, end countdown immediately
     jumpMode = false;
     pendingUserText = jumpInput.value.trim();
     clearCountdown();
     jumpBtn.disabled = true;
     jumpInput.style.display = "none";
-    // onDone will be triggered by the conversation loop after this
   }
 };
 
@@ -118,20 +113,27 @@ validateBtn.onclick = async () => {
   }
 
   setStatus("Validating experts...");
-  const res = await fetch("/api/checkExperts", {
-    method: "POST",
-    body: JSON.stringify({ expertA, expertB })
-  });
-  const data = await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/checkExperts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expertA, expertB })
+    });
 
-  if (!res.ok) {
-    setStatus(data.error || "Validation failed.", "error");
+    const data = await res.json();
+    if (!res.ok) {
+      setStatus(data.error || "Validation failed.", "error");
+      chatBtn.disabled = true;
+      return;
+    }
+
+    setStatus("Experts validated. You can start the conversation.");
+    chatBtn.disabled = false;
+  } catch (err) {
+    console.error(err);
+    setStatus("Error connecting to backend.", "error");
     chatBtn.disabled = true;
-    return;
   }
-
-  setStatus("Experts validated. You can start the conversation.");
-  chatBtn.disabled = false;
 };
 
 // Main conversation runner
@@ -159,10 +161,9 @@ chatBtn.onclick = async () => {
 
   const transcript = [];
   let lastMessageText = "";
-  let currentModel = "openai"; // openai starts
+  let currentModel = "openai";
   let messageIndex = 0;
 
-  // Helper: build prompt with evidence-only constraint
   function buildPrompt(expertName, role, topic, lastText, userAddition, otherExpertName) {
     const baseInstruction = `
 You are impersonating the expert: ${expertName}.
@@ -197,29 +198,29 @@ Respond now, taking into account both the other expert's message and your own ex
 ${userPart}`;
   }
 
-  // Helper: call OpenAI
   async function callOpenAI(prompt) {
     setActiveModel("openai");
-    const res = await fetch("/api/openaiChat", {
+    const res = await fetch(`${API_BASE}/openaiChat`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
     return data.text || "";
   }
 
-  // Helper: call Claude
   async function callClaude(prompt) {
     setActiveModel("claude");
-    const res = await fetch("/api/claudeChat", {
+    const res = await fetch(`${API_BASE}/claudeChat`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
     return data.text || "";
   }
 
-  // First message: Model A initial response
+  // First message: OpenAI initial response
   {
     const prompt = buildPrompt(expertA, "initial", topic, "", null, expertB);
     const text = await callOpenAI(prompt);
@@ -231,14 +232,12 @@ ${userPart}`;
 
   // Loop for remaining messages
   while (conversationRunning && messageIndex < totalMessages) {
-    // Delay with jump-in opportunity
     await new Promise(resolve => {
       startDelay(delaySeconds, userText => {
         pendingUserText = userText || pendingUserText;
         resolve();
       });
 
-      // If user hits "Resume conversation", we also resolve
       const checkResume = setInterval(() => {
         if (!jumpMode && pendingUserText !== "") {
           clearInterval(checkResume);
@@ -252,7 +251,6 @@ ${userPart}`;
     const userAddition = pendingUserText || null;
     pendingUserText = "";
 
-    // Decide which model speaks next
     const isOpenAI = currentModel === "openai";
     const expertName = isOpenAI ? expertA : expertB;
     const otherExpertName = isOpenAI ? expertB : expertA;
@@ -277,7 +275,6 @@ ${userPart}`;
     messageIndex++;
     renderTranscript(transcript);
 
-    // Alternate model
     currentModel = isOpenAI ? "claude" : "openai";
   }
 
