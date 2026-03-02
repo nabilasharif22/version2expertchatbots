@@ -5,161 +5,6 @@
   <title>Expert Chatbots — OpenAI & Claude Debate</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
-  <style>
-    /* Minimal inline styling for layout, use styles.css for full theme */
-    body {
-      font-family: "Helvetica Neue", Arial, sans-serif;
-      background-color: #f4f6f8;
-      color: #333;
-      margin: 0;
-      padding: 0;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: 2rem auto;
-      padding: 2rem;
-      background-color: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-
-    h1 {
-      text-align: center;
-      color: #1f2937;
-      margin-bottom: 0.5rem;
-    }
-
-    p.description {
-      text-align: center;
-      color: #555;
-      margin-bottom: 2rem;
-    }
-
-    .form-group {
-      margin-bottom: 1.5rem;
-    }
-
-    label {
-      font-weight: 600;
-      display: block;
-      margin-bottom: 0.5rem;
-    }
-
-    input, textarea {
-      width: 100%;
-      padding: 0.6rem 0.8rem;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 1rem;
-      transition: border-color 0.2s;
-    }
-
-    input:focus, textarea:focus {
-      border-color: #3b82f6;
-      outline: none;
-      box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
-    }
-
-    .controls-row, .jump-row {
-      display: flex;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-      flex-wrap: wrap;
-    }
-
-    button {
-      padding: 0.6rem 1.2rem;
-      font-size: 1rem;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      background-color: #3b82f6;
-      color: white;
-      transition: background-color 0.2s;
-    }
-
-    button:disabled {
-      background-color: #9ca3af;
-      cursor: not-allowed;
-    }
-
-    button:hover:not(:disabled) {
-      background-color: #2563eb;
-    }
-
-    .status-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 1.5rem;
-      font-weight: 600;
-    }
-
-    .progress-row {
-      display: flex;
-      justify-content: space-around;
-      margin-bottom: 1.5rem;
-    }
-
-    .model-indicator {
-      text-align: center;
-    }
-
-    .dots span {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      margin: 0 2px;
-      background-color: #d1d5db;
-      border-radius: 50%;
-      animation: pulse 1.2s infinite;
-    }
-
-    .dots span:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-    .dots span:nth-child(3) {
-      animation-delay: 0.4s;
-    }
-
-    .dots.active span {
-      background-color: #3b82f6;
-    }
-
-    @keyframes pulse {
-      0%, 80%, 100% { transform: scale(0); }
-      40% { transform: scale(1); }
-    }
-
-    #transcript {
-      border-top: 1px solid #e5e7eb;
-      padding-top: 1rem;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-
-    .message {
-      margin-bottom: 1rem;
-      padding: 0.8rem;
-      border-radius: 8px;
-    }
-
-    .message.openai {
-      background-color: #eef2ff;
-      border-left: 4px solid #3b82f6;
-    }
-
-    .message.claude {
-      background-color: #f0fdf4;
-      border-left: 4px solid #22c55e;
-    }
-
-    @media (max-width: 600px) {
-      .controls-row, .jump-row, .progress-row {
-        flex-direction: column;
-      }
-    }
-  </style>
 </head>
 
 <body>
@@ -170,6 +15,7 @@
       using only papers they have authored or explicitly referenced.
     </p>
 
+    <!-- Expert Inputs -->
     <div class="form-group">
       <label for="expertA">Expert A (OpenAI)</label>
       <input id="expertA" placeholder="e.g., Geoffrey Hinton" required />
@@ -180,11 +26,13 @@
       <input id="expertB" placeholder="e.g., Yann LeCun" required />
     </div>
 
+    <!-- Topic Input -->
     <div class="form-group">
       <label for="topic">Topic</label>
       <textarea id="topic" rows="3" placeholder="e.g., Future of AI safety" required></textarea>
     </div>
 
+    <!-- Conversation Settings -->
     <div class="form-group">
       <label for="turns">Total messages (back-and-forth count)</label>
       <input id="turns" type="number" min="2" max="20" value="10" />
@@ -195,16 +43,19 @@
       <input id="delay" type="number" min="1" max="60" value="5" />
     </div>
 
+    <!-- Controls -->
     <div class="controls-row">
       <button id="validateBtn">Validate Experts</button>
       <button id="chatBtn" disabled>Start Conversation</button>
     </div>
 
+    <!-- Status -->
     <div class="status-row">
       <div id="status"></div>
       <div id="countdown"></div>
     </div>
 
+    <!-- Model Activity Indicators -->
     <div class="progress-row">
       <div class="model-indicator">
         <div>Model A (OpenAI)</div>
@@ -220,16 +71,17 @@
       </div>
     </div>
 
+    <!-- Jump-in -->
     <div class="jump-row">
       <button id="jumpBtn" disabled>Jump-in</button>
       <textarea
         id="jumpInput"
         rows="2"
         placeholder="Add your question/comment here..."
-        style="display:none;"
       ></textarea>
     </div>
 
+    <!-- Transcript -->
     <div id="transcript"></div>
   </div>
 
