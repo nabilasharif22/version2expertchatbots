@@ -9,33 +9,45 @@
 export async function onRequestPost(context) {
   try {
     const body = await context.request.json();
-    const { expertA, expertB } = body;
+    const { prompt } = body;
 
-    if (!expertA || !expertB) {
-      return new Response(JSON.stringify({ error: "Both experts required." }), { status: 400 });
+    if (!prompt) {
+      return new Response(JSON.stringify({ text: "", error: "Prompt is required." }), { status: 400 });
     }
 
-    async function getCount(name) {
-      const res = await fetch(`https://api.semanticscholar.org/graph/v1/author/search?query=${encodeURIComponent(name)}&fields=paperCount&limit=1`);
-      const data = await res.json();
-      return data.data?.[0]?.paperCount || 0;
+    const apiKey = context.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ text: "", error: "Claude API key not set." }), { status: 500 });
     }
 
-    const [countA, countB] = await Promise.all([getCount(expertA), getCount(expertB)]);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 600,
+        temperature: 0.4,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
 
-    if (countA === 0 || countB === 0) {
-      return new Response(
-        JSON.stringify({
-          error: "One or both experts have no published papers.",
-          details: { [expertA]: countA, [expertB]: countB }
-        }),
-        { status: 400 }
-      );
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Claude API Error:", res.status, errText);
+      return new Response(JSON.stringify({ text: "", error: `Claude API error: ${res.status}` }), { status: res.status });
     }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+
+    return new Response(JSON.stringify({ text }), { status: 200 });
+
   } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: "Server error." }), { status: 500 });
+    console.error("Claude function failed:", err);
+    return new Response(JSON.stringify({ text: "", error: "Server error calling Claude." }), { status: 500 });
   }
 }
