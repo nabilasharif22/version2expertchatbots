@@ -1,8 +1,5 @@
 // script.js
-// Orchestrates the conversation on the front end
-// Integrated with Vercel serverless APIs
-
-const API_BASE = "https://version2expertchatbots.vercel.app/api"; // <-- REPLACE with your Vercel URL
+// Frontend logic for Expert Chatbots: conversation orchestration, jump-in, pulsing dots, transcript
 
 const expertAInput = document.getElementById("expertA");
 const expertBInput = document.getElementById("expertB");
@@ -114,13 +111,14 @@ validateBtn.onclick = async () => {
 
   setStatus("Validating experts...");
   try {
-    const res = await fetch(`${API_BASE}/checkExperts`, {
+    const res = await fetch("/api/checkExperts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expertA, expertB })
     });
 
     const data = await res.json();
+
     if (!res.ok) {
       setStatus(data.error || "Validation failed.", "error");
       chatBtn.disabled = true;
@@ -130,9 +128,8 @@ validateBtn.onclick = async () => {
     setStatus("Experts validated. You can start the conversation.");
     chatBtn.disabled = false;
   } catch (err) {
+    setStatus("Error validating experts.", "error");
     console.error(err);
-    setStatus("Error connecting to backend.", "error");
-    chatBtn.disabled = true;
   }
 };
 
@@ -161,66 +158,79 @@ chatBtn.onclick = async () => {
 
   const transcript = [];
   let lastMessageText = "";
-  let currentModel = "openai";
+  let currentModel = "openai"; // OpenAI starts
   let messageIndex = 0;
 
+  // Helper: build prompt with evidence-only constraint
   function buildPrompt(expertName, role, topic, lastText, userAddition, otherExpertName) {
     const baseInstruction = `
 You are impersonating the expert: ${expertName}.
 Topic: "${topic}".
 
 Rules:
-- You may only make claims supported by papers you have authored or papers you explicitly reference.
-- Every factual statement must include a citation to a real paper.
-- If you cannot support a claim with a paper, explicitly say so.
-- Acknowledge the other expert, ${otherExpertName}, by name and respond to their last message.
-- Maintain a concise, scholarly tone.
+- Only make claims supported by papers you authored or explicitly reference.
+- Include citations for factual statements.
+- If unsupported, explicitly say so.
+- Respond to ${otherExpertName}'s last message.
+- Keep a concise, scholarly tone.
 
-The other expert's last message was:
+Other expert's last message:
 "${lastText || "(no previous message; you are starting the discussion)"}"
 `;
 
     const userPart = userAddition
-      ? `\nThe user adds the following question/comment that you must address explicitly:\n"${userAddition}"\n`
+      ? `\nUser adds the following question/comment:\n"${userAddition}"\n`
       : "";
 
     if (role === "initial") {
       return `${baseInstruction}
-Begin the discussion by:
-- Stating your perspective on the topic.
-- Acknowledging ${otherExpertName}.
-- Asking ${otherExpertName} for their input.
+Begin the discussion:
+- State your perspective.
+- Acknowledge ${otherExpertName}.
+- Ask ${otherExpertName} for input.
 ${userPart}`;
     }
 
     return `${baseInstruction}
-Respond now, taking into account both the other expert's message and your own expertise.
+Respond considering the other expert's message and your expertise.
 ${userPart}`;
   }
 
+  // Helper: call OpenAI
   async function callOpenAI(prompt) {
     setActiveModel("openai");
-    const res = await fetch(`${API_BASE}/openaiChat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
-    });
-    const data = await res.json();
-    return data.text || "";
+    try {
+      const res = await fetch("/api/openaiChat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json();
+      return data.text || "";
+    } catch (err) {
+      console.error(err);
+      return "Error: Failed to get response from OpenAI.";
+    }
   }
 
+  // Helper: call Claude
   async function callClaude(prompt) {
     setActiveModel("claude");
-    const res = await fetch(`${API_BASE}/claudeChat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
-    });
-    const data = await res.json();
-    return data.text || "";
+    try {
+      const res = await fetch("/api/claudeChat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json();
+      return data.text || "";
+    } catch (err) {
+      console.error(err);
+      return "Error: Failed to get response from Claude.";
+    }
   }
 
-  // First message: OpenAI initial response
+  // First message: Model A initial response
   {
     const prompt = buildPrompt(expertA, "initial", topic, "", null, expertB);
     const text = await callOpenAI(prompt);
@@ -271,6 +281,7 @@ ${userPart}`;
       model: isOpenAI ? "openai" : "claude",
       text
     });
+
     lastMessageText = text;
     messageIndex++;
     renderTranscript(transcript);
@@ -278,7 +289,6 @@ ${userPart}`;
     currentModel = isOpenAI ? "claude" : "openai";
   }
 
-  // End of conversation
   conversationRunning = false;
   setActiveModel(null);
   clearCountdown();
