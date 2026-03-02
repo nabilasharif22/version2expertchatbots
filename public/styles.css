@@ -1,43 +1,93 @@
-/*
-  styles.css
-  Basic layout, pulsing dot indicators, and transcript styling.
+/* styles.css
+   Professional UI for Expert Chatbots
+   Enhanced layout, colors, responsive design, pulsing indicators, and transcript cards
 */
 
+/* ===== Body & Container ===== */
 body {
-  font-family: system-ui, sans-serif;
-  background: #f5f5f5;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  background-color: #f4f6f8;
+  color: #1f2937;
+  margin: 0;
   padding: 2rem;
 }
 
 .container {
   max-width: 900px;
   margin: auto;
-  background: white;
+  background-color: #fff;
   padding: 2rem;
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* ===== Header ===== */
+h1 {
+  text-align: center;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+p.description {
+  text-align: center;
+  color: #555;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+/* ===== Form Fields ===== */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.5rem;
 }
 
 input, textarea {
   width: 100%;
-  padding: .5rem;
-  margin-top: .25rem;
-  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+input:focus, textarea:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
+
+/* ===== Buttons ===== */
 button {
-  padding: .6rem 1.2rem;
-  margin-right: .5rem;
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
+  background-color: #3b82f6;
+  color: #fff;
+  transition: background-color 0.2s;
 }
 
-.controls-row,
-.status-row,
-.progress-row,
-.jump-row {
+button:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+/* ===== Layout Rows ===== */
+.controls-row, .status-row, .progress-row, .jump-row {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-top: .5rem;
+  margin-top: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -50,27 +100,13 @@ button {
   font-family: monospace;
 }
 
-.message {
-  padding: 1rem;
-  margin-top: 1rem;
-  border-radius: 6px;
-}
-
-.openai {
-  background: #e8f0ff;
-  border-left: 4px solid #2563eb;
-}
-
-.claude {
-  background: #fff4d6;
-  border-left: 4px solid #d97706;
-}
-
+/* ===== Model Indicators & Pulsing Dots ===== */
 .model-indicator {
   flex: 1;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 0.3rem;
 }
 
 .dots {
@@ -86,9 +122,9 @@ button {
   opacity: 0.4;
 }
 
-/* Pulsing animation for active model */
 .dots.active span {
   animation: pulse 1s infinite ease-in-out;
+  background-color: #3b82f6;
 }
 
 .dots.active span:nth-child(2) {
@@ -102,4 +138,47 @@ button {
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 0.4; }
   50% { transform: scale(1.4); opacity: 1; }
+}
+
+/* ===== Jump Input ===== */
+#jumpInput {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+  resize: vertical;
+}
+
+/* ===== Transcript Messages ===== */
+#transcript {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.message {
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 8px;
+  line-height: 1.4;
+}
+
+.message.openai {
+  background-color: #eef2ff;
+  border-left: 4px solid #3b82f6;
+}
+
+.message.claude {
+  background-color: #f0fdf4;
+  border-left: 4px solid #22c55e;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .controls-row, .jump-row, .progress-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
