@@ -1,5 +1,5 @@
 // script.js
-// AI Expert conversation loop, jump-in support, error handling
+// Orchestrates the expert conversation with error handling
 
 const expertAInput = document.getElementById("expertA");
 const expertBInput = document.getElementById("expertB");
@@ -25,14 +25,10 @@ let countdownRemaining = 0;
 let jumpMode = false;
 let pendingUserText = "";
 
-// --- Utility functions ---
+// --- Utility Functions ---
 function setStatus(msg, type = "") {
   statusDiv.textContent = msg;
   statusDiv.style.color = type === "error" ? "red" : "green";
-}
-
-function escapeHTML(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function renderTranscript(messages) {
@@ -40,7 +36,7 @@ function renderTranscript(messages) {
   messages.forEach(m => {
     const div = document.createElement("div");
     div.className = `message ${m.model}`;
-    div.innerHTML = `<strong>${escapeHTML(m.speaker)} (${m.model})</strong><br>${escapeHTML(m.text)}`;
+    div.innerHTML = `<strong>${m.speaker} (${m.model})</strong><br>${m.text}`;
     transcriptDiv.appendChild(div);
   });
 }
@@ -71,7 +67,7 @@ function startDelay(delaySeconds, onDone) {
 
   countdownTimer = setInterval(() => {
     if (!jumpMode) {
-      countdownRemaining -= 1;
+      countdownRemaining--;
       countdownDiv.textContent = `Next in: ${countdownRemaining}s`;
       if (countdownRemaining <= 0) {
         clearCountdown();
@@ -82,7 +78,7 @@ function startDelay(delaySeconds, onDone) {
   }, 1000);
 }
 
-// --- Jump-in / Resume ---
+// --- Jump-in / Resume button ---
 jumpBtn.onclick = () => {
   if (!conversationRunning) return;
 
@@ -99,13 +95,14 @@ jumpBtn.onclick = () => {
   }
 };
 
-// --- Validate experts ---
+// --- Validate Experts ---
 validateBtn.onclick = async () => {
   const expertA = expertAInput.value.trim();
   const expertB = expertBInput.value.trim();
 
   if (!expertA || !expertB) {
-    setStatus("Both expertA and expertB are required.", "error");
+    setStatus("Both experts are required.", "error");
+    chatBtn.disabled = true;
     return;
   }
 
@@ -116,22 +113,25 @@ validateBtn.onclick = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expertA, expertB })
     });
-
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data.error || "Validation failed");
+    if (!res.ok) {
+      setStatus(data.error || "Validation failed.", "error");
+      chatBtn.disabled = true;
+      return;
+    }
 
-    setStatus("Experts validated. Ready to start conversation.");
+    setStatus(`Experts validated. Papers: ${expertA} (${data.counts[expertA]}), ${expertB} (${data.counts[expertB]})`);
     chatBtn.disabled = false;
 
   } catch (err) {
-    console.error("Expert validation error:", err);
-    setStatus("Server failed to validate experts.", "error");
+    console.error("Validation failed:", err);
+    setStatus("Failed to validate experts.", "error");
     chatBtn.disabled = true;
   }
 };
 
-// --- AI fetch functions ---
+// --- Call OpenAI ---
 async function callOpenAI(prompt) {
   setActiveModel("openai");
   try {
@@ -141,14 +141,19 @@ async function callOpenAI(prompt) {
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "OpenAI API failed");
+    if (data.error) {
+      setStatus(`OpenAI error: ${data.error}`, "error");
+      return "";
+    }
     return data.text || "";
   } catch (err) {
-    console.error("OpenAI fetch error:", err);
-    return `Error: Failed to get response from OpenAI.`;
+    console.error("OpenAI fetch failed:", err);
+    setStatus("Failed to get response from OpenAI.", "error");
+    return "";
   }
 }
 
+// --- Call Claude ---
 async function callClaude(prompt) {
   setActiveModel("claude");
   try {
@@ -158,15 +163,40 @@ async function callClaude(prompt) {
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Claude API failed");
+    if (data.error) {
+      setStatus(`Claude error: ${data.error}`, "error");
+      return "";
+    }
     return data.text || "";
   } catch (err) {
-    console.error("Claude fetch error:", err);
-    return `Error: Failed to get response from Claude.`;
+    console.error("Claude fetch failed:", err);
+    setStatus("Failed to get response from Claude.", "error");
+    return "";
   }
 }
 
-// --- Main conversation loop ---
+// --- Build prompt ---
+function buildPrompt(expertName, role, topic, lastText, userAddition, otherExpertName) {
+  const base = `
+You are impersonating: ${expertName}.
+Topic: "${topic}".
+
+Rules:
+- Only claims supported by real papers authored or referenced by you.
+- Cite every factual statement.
+- If no paper exists, say so.
+- Respond to ${otherExpertName}'s last message.
+
+Other's last message:
+"${lastText || "(starting discussion)"}"
+`;
+
+  return role === "initial"
+    ? `${base}\nBegin discussion.${userAddition ? `\nUser adds: "${userAddition}"` : ""}`
+    : `${base}\nRespond now.${userAddition ? `\nUser adds: "${userAddition}"` : ""}`;
+}
+
+// --- Main conversation ---
 chatBtn.onclick = async () => {
   const expertA = expertAInput.value.trim();
   const expertB = expertBInput.value.trim();
@@ -175,7 +205,7 @@ chatBtn.onclick = async () => {
   const delaySeconds = Number(delayInput.value) || 5;
 
   if (!expertA || !expertB || !topic) {
-    setStatus("Fill in experts and topic.", "error");
+    setStatus("Please fill in experts and topic.", "error");
     return;
   }
 
@@ -191,15 +221,25 @@ chatBtn.onclick = async () => {
 
   const transcript = [];
   let lastMessageText = "";
-  let currentModel = "openai"; // Start with Expert A
+  let currentModel = "openai";
+  let messageIndex = 0;
 
-  for (let messageIndex = 0; messageIndex < totalMessages; messageIndex++) {
-    // Delay with jump-in
+  // First message
+  const firstPrompt = buildPrompt(expertA, "initial", topic, "", null, expertB);
+  const firstText = await callOpenAI(firstPrompt);
+  transcript.push({ speaker: expertA, model: "openai", text: firstText });
+  lastMessageText = firstText;
+  messageIndex++;
+  renderTranscript(transcript);
+
+  // Conversation loop
+  while (conversationRunning && messageIndex < totalMessages) {
     await new Promise(resolve => {
       startDelay(delaySeconds, userText => {
         pendingUserText = userText || pendingUserText;
         resolve();
       });
+
       const checkResume = setInterval(() => {
         if (!jumpMode && pendingUserText !== "") {
           clearInterval(checkResume);
@@ -215,25 +255,16 @@ chatBtn.onclick = async () => {
 
     const isOpenAI = currentModel === "openai";
     const expertName = isOpenAI ? expertA : expertB;
-    const otherExpert = isOpenAI ? expertB : expertA;
+    const otherExpertName = isOpenAI ? expertB : expertA;
 
-    const prompt = `
-You are impersonating ${expertName} on the topic "${topic}".
-Rules:
-- Only make claims supported by papers you authored or explicitly reference.
-- Cite real papers when possible.
-- Respond to the other expert (${otherExpert}).
-${userAddition ? "\nUser added: " + userAddition : ""}
-Previous message: "${lastMessageText || "(start)"}"
-`;
-
+    const prompt = buildPrompt(expertName, "reply", topic, lastMessageText, userAddition, otherExpertName);
     const text = isOpenAI ? await callOpenAI(prompt) : await callClaude(prompt);
 
     transcript.push({ speaker: expertName, model: isOpenAI ? "openai" : "claude", text });
-    renderTranscript(transcript);
     lastMessageText = text;
+    messageIndex++;
+    renderTranscript(transcript);
 
-    // Alternate model
     currentModel = isOpenAI ? "claude" : "openai";
   }
 
