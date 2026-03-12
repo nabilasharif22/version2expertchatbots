@@ -76,8 +76,9 @@ export default async function handler(req, res) {
     console.error("checkExperts error:", error);
 
     return res.status(500).json({
-      error: "Server failed to validate experts."
-    });
+  error: "Server failed to validate experts.",
+  details: error.message
+});
 
   }
 }
