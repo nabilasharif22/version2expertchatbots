@@ -1,5 +1,5 @@
 // script.js
-// Orchestrates conversation with full error handling for OpenAI & Claude
+// AI Expert conversation loop, jump-in support, error handling
 
 const expertAInput = document.getElementById("expertA");
 const expertBInput = document.getElementById("expertB");
@@ -25,24 +25,26 @@ let countdownRemaining = 0;
 let jumpMode = false;
 let pendingUserText = "";
 
-// Utility: set status text and color
+// --- Utility functions ---
 function setStatus(msg, type = "") {
   statusDiv.textContent = msg;
   statusDiv.style.color = type === "error" ? "red" : "green";
 }
 
-// Utility: render transcript messages
+function escapeHTML(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function renderTranscript(messages) {
   transcriptDiv.innerHTML = "";
   messages.forEach(m => {
     const div = document.createElement("div");
     div.className = `message ${m.model}`;
-    div.innerHTML = `<strong>${m.speaker} (${m.model})</strong><br>${m.text}`;
+    div.innerHTML = `<strong>${escapeHTML(m.speaker)} (${m.model})</strong><br>${escapeHTML(m.text)}`;
     transcriptDiv.appendChild(div);
   });
 }
 
-// Utility: control pulsing dots
 function setActiveModel(model) {
   dotsOpenAI.classList.remove("active");
   dotsClaude.classList.remove("active");
@@ -50,14 +52,12 @@ function setActiveModel(model) {
   if (model === "claude") dotsClaude.classList.add("active");
 }
 
-// Utility: clear countdown
 function clearCountdown() {
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = null;
   countdownDiv.textContent = "";
 }
 
-// Start a countdown with jump-in enabled
 function startDelay(delaySeconds, onDone) {
   clearCountdown();
   countdownRemaining = delaySeconds;
@@ -82,7 +82,7 @@ function startDelay(delaySeconds, onDone) {
   }, 1000);
 }
 
-// Jump-in / Resume button behavior
+// --- Jump-in / Resume ---
 jumpBtn.onclick = () => {
   if (!conversationRunning) return;
 
@@ -99,13 +99,13 @@ jumpBtn.onclick = () => {
   }
 };
 
-// Validate experts
+// --- Validate experts ---
 validateBtn.onclick = async () => {
   const expertA = expertAInput.value.trim();
   const expertB = expertBInput.value.trim();
 
   if (!expertA || !expertB) {
-    setStatus("Please enter both experts.", "error");
+    setStatus("Both expertA and expertB are required.", "error");
     return;
   }
 
@@ -113,69 +113,60 @@ validateBtn.onclick = async () => {
   try {
     const res = await fetch("/api/checkExperts", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expertA, expertB })
     });
+
     const data = await res.json();
 
-    if (!res.ok) {
-      setStatus(data.error || "Validation failed.", "error");
-      chatBtn.disabled = true;
-      return;
-    }
+    if (!res.ok) throw new Error(data.error || "Validation failed");
 
-    setStatus("Experts validated. You can start the conversation.");
+    setStatus("Experts validated. Ready to start conversation.");
     chatBtn.disabled = false;
 
   } catch (err) {
-    console.error("Validation failed:", err);
-    setStatus("Failed to validate experts. Check server logs.", "error");
+    console.error("Expert validation error:", err);
+    setStatus("Server failed to validate experts.", "error");
     chatBtn.disabled = true;
   }
 };
 
-// Helper: call OpenAI
+// --- AI fetch functions ---
 async function callOpenAI(prompt) {
   setActiveModel("openai");
   try {
     const res = await fetch("/api/openaiChat", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
-    if (data.error) {
-      setStatus(`OpenAI error: ${data.error}`, "error");
-      return "";
-    }
+    if (!res.ok) throw new Error(data.error || "OpenAI API failed");
     return data.text || "";
   } catch (err) {
-    console.error("OpenAI fetch failed:", err);
-    setStatus("Failed to get response from OpenAI.", "error");
-    return "";
+    console.error("OpenAI fetch error:", err);
+    return `Error: Failed to get response from OpenAI.`;
   }
 }
 
-// Helper: call Claude
 async function callClaude(prompt) {
   setActiveModel("claude");
   try {
     const res = await fetch("/api/claudeChat", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt })
     });
     const data = await res.json();
-    if (data.error) {
-      setStatus(`Claude error: ${data.error}`, "error");
-      return "";
-    }
+    if (!res.ok) throw new Error(data.error || "Claude API failed");
     return data.text || "";
   } catch (err) {
-    console.error("Claude fetch failed:", err);
-    setStatus("Failed to get response from Claude.", "error");
-    return "";
+    console.error("Claude fetch error:", err);
+    return `Error: Failed to get response from Claude.`;
   }
 }
 
-// Main conversation runner
+// --- Main conversation loop ---
 chatBtn.onclick = async () => {
   const expertA = expertAInput.value.trim();
   const expertB = expertBInput.value.trim();
@@ -184,7 +175,7 @@ chatBtn.onclick = async () => {
   const delaySeconds = Number(delayInput.value) || 5;
 
   if (!expertA || !expertB || !topic) {
-    setStatus("Please fill in experts and topic.", "error");
+    setStatus("Fill in experts and topic.", "error");
     return;
   }
 
@@ -200,52 +191,15 @@ chatBtn.onclick = async () => {
 
   const transcript = [];
   let lastMessageText = "";
-  let currentModel = "openai"; // OpenAI starts
-  let messageIndex = 0;
+  let currentModel = "openai"; // Start with Expert A
 
-  // Helper: build prompt
-  function buildPrompt(expertName, role, topic, lastText, userAddition, otherExpertName) {
-    const baseInstruction = `
-You are impersonating: ${expertName}.
-Topic: "${topic}".
-
-Rules:
-- Only claims supported by real papers authored or referenced by you.
-- Cite every factual statement.
-- If no paper exists, say so.
-- Respond to ${otherExpertName}'s last message.
-
-Other's last message:
-"${lastText || "(starting discussion)"}"
-`;
-
-    const userPart = userAddition
-      ? `\nUser adds:\n"${userAddition}"`
-      : "";
-
-    return role === "initial"
-      ? `${baseInstruction}\nBegin discussion. ${userPart}`
-      : `${baseInstruction}\nRespond now. ${userPart}`;
-  }
-
-  // First message
-  {
-    const prompt = buildPrompt(expertA, "initial", topic, "", null, expertB);
-    const text = await callOpenAI(prompt);
-    transcript.push({ speaker: expertA, model: "openai", text });
-    lastMessageText = text;
-    messageIndex++;
-    renderTranscript(transcript);
-  }
-
-  // Loop for remaining messages
-  while (conversationRunning && messageIndex < totalMessages) {
+  for (let messageIndex = 0; messageIndex < totalMessages; messageIndex++) {
+    // Delay with jump-in
     await new Promise(resolve => {
       startDelay(delaySeconds, userText => {
         pendingUserText = userText || pendingUserText;
         resolve();
       });
-
       const checkResume = setInterval(() => {
         if (!jumpMode && pendingUserText !== "") {
           clearInterval(checkResume);
@@ -261,17 +215,25 @@ Other's last message:
 
     const isOpenAI = currentModel === "openai";
     const expertName = isOpenAI ? expertA : expertB;
-    const otherExpertName = isOpenAI ? expertB : expertA;
+    const otherExpert = isOpenAI ? expertB : expertA;
 
-    const prompt = buildPrompt(expertName, "reply", topic, lastMessageText, userAddition, otherExpertName);
+    const prompt = `
+You are impersonating ${expertName} on the topic "${topic}".
+Rules:
+- Only make claims supported by papers you authored or explicitly reference.
+- Cite real papers when possible.
+- Respond to the other expert (${otherExpert}).
+${userAddition ? "\nUser added: " + userAddition : ""}
+Previous message: "${lastMessageText || "(start)"}"
+`;
 
     const text = isOpenAI ? await callOpenAI(prompt) : await callClaude(prompt);
 
     transcript.push({ speaker: expertName, model: isOpenAI ? "openai" : "claude", text });
-    lastMessageText = text;
-    messageIndex++;
     renderTranscript(transcript);
+    lastMessageText = text;
 
+    // Alternate model
     currentModel = isOpenAI ? "claude" : "openai";
   }
 
