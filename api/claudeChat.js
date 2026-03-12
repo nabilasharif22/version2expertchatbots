@@ -1,22 +1,32 @@
-// api/claudeChat.js
+// functions/claudeChat.js
 /**
- * Calls Anthropic Claude for Expert B
- * Requires ANTHROPIC_API_KEY in Vercel environment variables
+ * claudeChat.js
+ * Vercel Serverless Function
+ * Calls Anthropic Claude to generate a reply impersonating Expert B.
+ * Enforces prompt from frontend. API key is kept secret in environment variables.
  */
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Use POST method." });
-
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Prompt is required." });
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "Claude API key not set." });
-
+export async function onRequestPost(context) {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const body = await context.request.json();
+    const { prompt } = body;
+
+    if (!prompt) {
+      return new Response(JSON.stringify({ text: "", error: "Prompt is required." }), { status: 400 });
+    }
+
+    const apiKey = context.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ text: "", error: "Claude API key not set." }), { status: 500 });
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 600,
@@ -25,18 +35,19 @@ export default async function handler(req, res) {
       })
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("Claude API error:", response.status, text);
-      return res.status(response.status).json({ error: `Claude API error: ${response.status}` });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Claude API Error:", res.status, errText);
+      return new Response(JSON.stringify({ text: "", error: `Claude API error: ${res.status}` }), { status: res.status });
     }
 
-    const data = await response.json();
+    const data = await res.json();
     const text = data.content?.[0]?.text || "";
-    return res.status(200).json({ text });
+
+    return new Response(JSON.stringify({ text }), { status: 200 });
 
   } catch (err) {
     console.error("Claude function failed:", err);
-    return res.status(500).json({ error: "Server error calling Claude." });
+    return new Response(JSON.stringify({ text: "", error: "Server error calling Claude." }), { status: 500 });
   }
 }

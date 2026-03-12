@@ -1,57 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Expert Chatbots</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <title>Expert Chatbots — OpenAI & Claude Debate</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <div class="container">
-    <h1>Expert Chatbots — OpenAI & Claude Debate</h1>
-    <p>Two AI models impersonate experts and debate your topic, using only real papers.</p>
+    <h1>Expert Chatbots</h1>
+    <p class="description">
+      Two AI models impersonate experts and debate your topic,
+      using only papers they have authored or explicitly referenced.
+    </p>
 
-    <label>Expert A (OpenAI):</label>
-    <input id="expertA" placeholder="e.g., Geoffrey Hinton">
+    <!-- Expert Inputs -->
+    <div class="form-group">
+      <label for="expertA">Expert A (OpenAI)</label>
+      <input id="expertA" placeholder="e.g., Geoffrey Hinton" required />
+    </div>
 
-    <label>Expert B (Claude):</label>
-    <input id="expertB" placeholder="e.g., Yann LeCun">
+    <div class="form-group">
+      <label for="expertB">Expert B (Claude)</label>
+      <input id="expertB" placeholder="e.g., Yann LeCun" required />
+    </div>
 
-    <label>Topic:</label>
-    <textarea id="topic" rows="3" placeholder="e.g., Future of AI safety"></textarea>
+    <!-- Topic Input -->
+    <div class="form-group">
+      <label for="topic">Topic</label>
+      <textarea id="topic" rows="3" placeholder="e.g., Future of AI safety" required></textarea>
+    </div>
 
-    <label>Total messages:</label>
-    <input id="turns" type="number" value="6" min="2" max="20">
+    <!-- Conversation Settings -->
+    <div class="form-group">
+      <label for="turns">Total messages (back-and-forth count)</label>
+      <input id="turns" type="number" min="2" max="20" value="10" />
+    </div>
 
-    <label>Delay between messages (seconds):</label>
-    <input id="delay" type="number" value="5" min="1" max="60">
+    <div class="form-group">
+      <label for="delay">Delay between messages (seconds)</label>
+      <input id="delay" type="number" min="1" max="60" value="5" />
+    </div>
 
+    <!-- Controls -->
     <div class="controls-row">
       <button id="validateBtn">Validate Experts</button>
       <button id="chatBtn" disabled>Start Conversation</button>
     </div>
 
+    <!-- Status -->
     <div class="status-row">
       <div id="status"></div>
       <div id="countdown"></div>
     </div>
 
+    <!-- Model Activity Indicators -->
     <div class="progress-row">
       <div class="model-indicator">
-        <div>OpenAI</div>
-        <div class="dots" id="dots-openai"><span></span><span></span><span></span></div>
+        <div>Model A (OpenAI)</div>
+        <div class="dots" id="dots-openai">
+          <span></span><span></span><span></span>
+        </div>
       </div>
       <div class="model-indicator">
-        <div>Claude</div>
-        <div class="dots" id="dots-claude"><span></span><span></span><span></span></div>
+        <div>Model B (Claude)</div>
+        <div class="dots" id="dots-claude">
+          <span></span><span></span><span></span>
+        </div>
       </div>
     </div>
 
+    <!-- Jump-in -->
     <div class="jump-row">
       <button id="jumpBtn" disabled>Jump-in</button>
-      <textarea id="jumpInput" rows="2" placeholder="Your comment..." style="display:none;"></textarea>
+      <textarea
+        id="jumpInput"
+        rows="2"
+        placeholder="Add your question/comment here..."
+      ></textarea>
     </div>
 
+    <!-- Transcript -->
     <div id="transcript"></div>
   </div>
 

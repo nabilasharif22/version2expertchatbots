@@ -1,4 +1,6 @@
 // script.js
+// AI Expert conversation loop, jump-in support, error handling
+
 const expertAInput = document.getElementById("expertA");
 const expertBInput = document.getElementById("expertB");
 const topicInput = document.getElementById("topic");
@@ -23,9 +25,14 @@ let countdownRemaining = 0;
 let jumpMode = false;
 let pendingUserText = "";
 
+// --- Utility functions ---
 function setStatus(msg, type = "") {
   statusDiv.textContent = msg;
   statusDiv.style.color = type === "error" ? "red" : "green";
+}
+
+function escapeHTML(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function renderTranscript(messages) {
@@ -33,7 +40,7 @@ function renderTranscript(messages) {
   messages.forEach(m => {
     const div = document.createElement("div");
     div.className = `message ${m.model}`;
-    div.innerHTML = `<strong>${m.speaker} (${m.model})</strong><br>${m.text}`;
+    div.innerHTML = `<strong>${escapeHTML(m.speaker)} (${m.model})</strong><br>${escapeHTML(m.text)}`;
     transcriptDiv.appendChild(div);
   });
 }
@@ -75,8 +82,10 @@ function startDelay(delaySeconds, onDone) {
   }, 1000);
 }
 
+// --- Jump-in / Resume ---
 jumpBtn.onclick = () => {
   if (!conversationRunning) return;
+
   if (!jumpMode) {
     jumpMode = true;
     jumpBtn.textContent = "Resume conversation";
@@ -90,14 +99,16 @@ jumpBtn.onclick = () => {
   }
 };
 
-// Validate experts
+// --- Validate experts ---
 validateBtn.onclick = async () => {
   const expertA = expertAInput.value.trim();
   const expertB = expertBInput.value.trim();
+
   if (!expertA || !expertB) {
-    setStatus("Both experts are required.", "error");
+    setStatus("Both expertA and expertB are required.", "error");
     return;
   }
+
   setStatus("Validating experts...");
   try {
     const res = await fetch("/api/checkExperts", {
@@ -105,13 +116,133 @@ validateBtn.onclick = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expertA, expertB })
     });
+
     const data = await res.json();
-    if (!res.ok) return setStatus(data.error || "Validation failed.", "error");
-    setStatus("Experts validated. Start conversation.");
+
+    if (!res.ok) throw new Error(data.error || "Validation failed");
+
+    setStatus("Experts validated. Ready to start conversation.");
     chatBtn.disabled = false;
+
   } catch (err) {
-    console.error(err);
+    console.error("Expert validation error:", err);
     setStatus("Server failed to validate experts.", "error");
     chatBtn.disabled = true;
   }
+};
+
+// --- AI fetch functions ---
+async function callOpenAI(prompt) {
+  setActiveModel("openai");
+  try {
+    const res = await fetch("/api/openaiChat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "OpenAI API failed");
+    return data.text || "";
+  } catch (err) {
+    console.error("OpenAI fetch error:", err);
+    return `Error: Failed to get response from OpenAI.`;
+  }
+}
+
+async function callClaude(prompt) {
+  setActiveModel("claude");
+  try {
+    const res = await fetch("/api/claudeChat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Claude API failed");
+    return data.text || "";
+  } catch (err) {
+    console.error("Claude fetch error:", err);
+    return `Error: Failed to get response from Claude.`;
+  }
+}
+
+// --- Main conversation loop ---
+chatBtn.onclick = async () => {
+  const expertA = expertAInput.value.trim();
+  const expertB = expertBInput.value.trim();
+  const topic = topicInput.value.trim();
+  const totalMessages = Number(turnsInput.value) || 10;
+  const delaySeconds = Number(delayInput.value) || 5;
+
+  if (!expertA || !expertB || !topic) {
+    setStatus("Fill in experts and topic.", "error");
+    return;
+  }
+
+  conversationRunning = true;
+  chatBtn.disabled = true;
+  validateBtn.disabled = true;
+  setStatus("Conversation running...");
+  transcriptDiv.innerHTML = "";
+  setActiveModel(null);
+  clearCountdown();
+  jumpBtn.disabled = true;
+  jumpInput.style.display = "none";
+
+  const transcript = [];
+  let lastMessageText = "";
+  let currentModel = "openai"; // Start with Expert A
+
+  for (let messageIndex = 0; messageIndex < totalMessages; messageIndex++) {
+    // Delay with jump-in
+    await new Promise(resolve => {
+      startDelay(delaySeconds, userText => {
+        pendingUserText = userText || pendingUserText;
+        resolve();
+      });
+      const checkResume = setInterval(() => {
+        if (!jumpMode && pendingUserText !== "") {
+          clearInterval(checkResume);
+          resolve();
+        }
+      }, 200);
+    });
+
+    clearCountdown();
+    jumpBtn.disabled = true;
+    const userAddition = pendingUserText || null;
+    pendingUserText = "";
+
+    const isOpenAI = currentModel === "openai";
+    const expertName = isOpenAI ? expertA : expertB;
+    const otherExpert = isOpenAI ? expertB : expertA;
+
+    const prompt = `
+You are impersonating ${expertName} on the topic "${topic}".
+Rules:
+- Only make claims supported by papers you authored or explicitly reference.
+- Cite real papers when possible.
+- Respond to the other expert (${otherExpert}).
+${userAddition ? "\nUser added: " + userAddition : ""}
+Previous message: "${lastMessageText || "(start)"}"
+`;
+
+    const text = isOpenAI ? await callOpenAI(prompt) : await callClaude(prompt);
+
+    transcript.push({ speaker: expertName, model: isOpenAI ? "openai" : "claude", text });
+    renderTranscript(transcript);
+    lastMessageText = text;
+
+    // Alternate model
+    currentModel = isOpenAI ? "claude" : "openai";
+  }
+
+  conversationRunning = false;
+  setActiveModel(null);
+  clearCountdown();
+  jumpBtn.disabled = true;
+  jumpInput.style.display = "none";
+  setStatus("Conversation finished.");
+  chatBtn.disabled = false;
+  validateBtn.disabled = false;
 };

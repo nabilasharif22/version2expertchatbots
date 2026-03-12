@@ -1,44 +1,112 @@
-// api/openaiChat.js
+// functions/openaiChat.js
 /**
- * Calls OpenAI to generate a reply for Expert A
- * Requires OPENAI_API_KEY in Vercel environment variables
+ * Vercel Serverless Function
+ * Calls OpenAI to generate a reply impersonating Expert A.
+ * API key is stored securely in environment variables.
  */
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Use POST method." });
-
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Prompt is required." });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "OpenAI API key not set." });
+export async function onRequestPost(context) {
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a careful expert impersonator. Only cite real papers authored or referenced by the expert." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.4
-      })
-    });
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("OpenAI API error:", response.status, text);
-      return res.status(response.status).json({ error: `OpenAI API error: ${response.status}` });
+    // Parse request body safely
+    let body;
+    try {
+      body = await context.request.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body." }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    return res.status(200).json({ text });
+    const prompt = body?.prompt?.trim();
 
-  } catch (err) {
-    console.error("OpenAI function failed:", err);
-    return res.status(500).json({ error: "Server error calling OpenAI." });
+    if (!prompt) {
+      return new Response(
+        JSON.stringify({ error: "Prompt is required." }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const apiKey = context.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      console.error("Missing OPENAI_API_KEY environment variable");
+
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key not configured." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const response = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.4,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a careful expert impersonator. Support claims with real papers when possible."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ]
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+      console.error("OpenAI API error:", data);
+
+      return new Response(
+        JSON.stringify({
+          error: "OpenAI API error",
+          details: data
+        }),
+        {
+          status: response.status,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    const text = data?.choices?.[0]?.message?.content || "";
+
+    return new Response(
+      JSON.stringify({ text }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+
+  } catch (error) {
+
+    console.error("OpenAI server error:", error);
+
+    return new Response(
+      JSON.stringify({
+        error: "Server error calling OpenAI."
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+
   }
 }
